@@ -1,0 +1,73 @@
+[
+  {
+    "date": "2026-03-01T22:33:34.289691",
+    "picks_found": 0,
+    "picks": []
+  },
+  {
+    "date": "2026-03-02T05:08:35.876158",
+    "picks_found": 2,
+    "picks": [
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "1X",
+        "odds": 1.0966346618675262,
+        "prob": 0.9118807154034679,
+        "score": 3.2948485888267594
+      },
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "12",
+        "odds": 1.228517245356674,
+        "prob": 0.813989387434013,
+        "score": 2.941143221040987
+      }
+    ]
+  },
+  {
+    "date": "2026-03-02T05:33:23.727488",
+    "picks_found": 2,
+    "picks": [
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "1X",
+        "odds": 1.0968319193068778,
+        "prob": 0.9117167201260254,
+        "score": 3.2890891950614227
+      },
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "12",
+        "odds": 1.2288177057468284,
+        "prob": 0.8137903574495114,
+        "score": 2.9358122020207924
+      }
+    ]
+  },
+  {
+    "date": "2026-03-02T19:31:17.827166",
+    "picks_found": 2,
+    "picks": [
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "1X",
+        "odds": 1.1150086520506735,
+        "prob": 0.8968540272408159,
+        "score": 2.7480453889343797
+      },
+      {
+        "league": "soccer_spain_la_liga",
+        "match": "Real Madrid vs Getafe",
+        "bet": "12",
+        "odds": 1.260485542070143,
+        "prob": 0.793345077451394,
+        "score": 2.430884197098773
+      }
+    ]
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "date": "2026-03-02",
+    "tickets": [
+      {
+        "bets": [
+          {
+            "league": "soccer_epl",
+            "match": "Leeds United vs Sunderland",
+            "bet": "1X",
+            "odds": 1.2984107895398298,
+            "prob": 0.7701722814198196,
+            "score": 1.2318564952778583
+          },
+          {
+            "league": "soccer_italy_serie_b",
+            "match": "Cesena FC vs Monza",
+            "bet": "X2",
+            "odds": 1.3758243844122082,
+            "prob": 0.7268369505074798,
+            "score": 0.6197574876567303
+          },
+          {
+            "league": "soccer_argentina_primera_division",
+            "match": "Banfield vs Aldosivi Mar del Plata",
+            "bet": "X2",
+            "odds": 1.895160473786234,
+            "prob": 0.5276598018120104,
+            "score": 0.6112992761529711
+          }
+        ],
+        "odds": 3.39,
+        "stake": 100
+      },
+      {
+        "bets": [
+          {
+            "league": "soccer_epl",
+            "match": "Wolverhampton Wanderers vs Liverpool",
+            "bet": "12",
+            "odds": 1.2424213413078982,
+            "prob": 0.8048799282112291,
+            "score": 1.1443324823674246
+          },
+          {
+            "league": "soccer_argentina_primera_division",
+            "match": "Estudiantes vs Velez Sarsfield BA",
+            "bet": "X2",
+            "odds": 1.7031983186335662,
+            "prob": 0.5871306876361146,
+            "score": 0.5209866973780115
+          },
+          {
+            "league": "soccer_italy_serie_b",
+            "match": "Cesena FC vs Monza",
+            "bet": "1X",
+            "odds": 1.7705086177126066,
+            "prob": 0.564809450796089,
+            "score": 0.48160029011425387
+          }
+        ],
+        "odds": 3.75,
+        "stake": 100
+      },
+      {
+        "bets": [
+          {
+            "league": "soccer_epl",
+            "match": "Everton vs Burnley",
+            "bet": "12",
+            "odds": 1.3155096250664113,
+            "prob": 0.7601616749474689,
+            "score": 1.7355198397883236
+          },
+          {
+            "league": "soccer_epl",
+            "match": "Leeds United vs Sunderland",
+            "bet": "X2",
+            "odds": 1.9834749564420313,
+            "prob": 0.5041656799104768,
+            "score": 0.8063907030631758
+          },
+          {
+            "league": "soccer_switzerland_superleague",
+            "match": "FC Winterthur vs Servette",
+            "bet": "12",
+            "odds": 1.2653033997177552,
+            "prob": 0.790324281293376,
+            "score": 0.9236750610694621
+          }
+        ],
+        "odds": 3.3,
+        "stake": 100
+      }
+    ],
+    "checked": false
+  }
+]
