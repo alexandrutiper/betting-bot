@@ -9,14 +9,12 @@ CONFIGURAȚII GENERALE BOT
 # TELEGRAM & API
 # ==========================================================
 
-# Token Telegram (obligatoriu pentru funcționare bot)
-TELEGRAM_TOKEN = "8655935129:AAH4xmyqs_fh9V9TOaiHoc-njT8bNWZ6ckk"
+import os
 
-# Chat ID unde trimite mesajele
-CHAT_ID = "6846683629"
-
-# API key pentru The Odds API
-ODDS_API_KEY = "21ff2c49824165e71d5444bec23196e1"
+# Citim valorile din environment variables (Railway)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
 # =====================================================
 # INTERVAL ANALIZĂ
