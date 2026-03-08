@@ -1,17 +1,12 @@
-# ticket_builder.py
-
 """
-Acest fișier conține OPTIMIZERUL PROFESIONAL al aplicației.
+OPTIMIZER BILET COTA 2
 
-Rolul său:
-- Primește lista de pickuri candidate
-- Generează sute de portofolii posibile
-- Rulează simulări Monte Carlo
-- Optimizează după:
-    - Probabilitate ≥1 bilet câștigător
-    - Profit așteptat
-    - Stabilitate (probabilitate zi negativă)
-    - Penalizare corelație (overlap)
+Algoritmul:
+
+1. generează combinații de selecții
+2. filtrează biletele după cotă
+3. rulează simulări Monte Carlo
+4. alege biletul cu probabilitatea maximă
 """
 
 import random
@@ -21,200 +16,126 @@ from itertools import combinations
 
 
 # ==========================================================
-# Grupare pickuri pe meci
-# ==========================================================
-
-def group_by_match(picks):
-    """
-    Grupăm toate variantele disponibile pentru fiecare meci.
-    Scop:
-        - evităm să tratăm fiecare pick separat
-        - controlăm corelația
-    """
-
-    matches = {}
-
-    for p in picks:
-        matches.setdefault(p["match"], []).append(p)
-
-    grouped = []
-
-    for match, variants in matches.items():
-
-        # sortăm variantele după scor (cea mai bună prima)
-        variants = sorted(variants, key=lambda x: x["score"], reverse=True)
-
-        grouped.append({
-            "match": match,
-            "variants": variants[:3]  # max 3 variante per meci
-        })
-
-    return grouped
-
-
-# ==========================================================
-# Construire bilet
+# CONSTRUIRE BILET
 # ==========================================================
 
 def build_ticket(bets):
-    """
-    Primește o listă de pariuri și calculează cota totală.
-    """
 
     odds = math.prod(b["odds"] for b in bets)
 
     return {
+
         "bets": bets,
-        "odds": round(odds, 2),
-        "stake": config.STAKE
+        "odds": round(odds,2)
     }
 
 
 # ==========================================================
-# Motor Monte Carlo
+# MONTE CARLO
 # ==========================================================
 
-def simulate_portfolio(tickets):
-    """
-    Simulează o zi de meciuri de config.SIMULATIONS ori.
-    Important:
-        - fiecare meci este simulat o singură dată per rundă
-        - biletele folosesc aceleași rezultate (corelație reală)
-    """
+def simulate_ticket(ticket):
 
-    success = 0
-    total_profit = 0
-    loss_days = 0
+    wins = 0
 
     for _ in range(config.SIMULATIONS):
 
-        results = {}
+        success = True
 
-        # Simulăm fiecare meci o singură dată
-        for t in tickets:
-            for b in t["bets"]:
-                if b["match"] not in results:
-                    results[b["match"]] = random.random() < b["prob"]
+        for bet in ticket["bets"]:
 
-        daily_profit = -config.STAKE * len(tickets)
-        won_any = False
+            if random.random() > bet["prob"]:
+                success = False
+                break
 
-        # Verificăm fiecare bilet
-        for t in tickets:
+        if success:
+            wins += 1
 
-            if all(results[b["match"]] for b in t["bets"]):
-                won_any = True
-                daily_profit += config.STAKE * t["odds"]
+    return wins/config.SIMULATIONS
 
-        if won_any:
-            success += 1
 
-        if daily_profit < 0:
-            loss_days += 1
+# ==========================================================
+# FILTRARE PIEȚE
+# ==========================================================
 
-        total_profit += daily_profit
+def allowed_market(bet):
 
-    return {
-        "prob_at_least_one": success / config.SIMULATIONS,
-        "expected_profit": total_profit / config.SIMULATIONS,
-        "loss_probability": loss_days / config.SIMULATIONS
+    """
+    Permitem doar piețele stabile.
+    """
+
+    allowed = {
+
+        "1X",
+        "X2",
+        "home_dnb",
+        "over15"
     }
 
-
-# ==========================================================
-# Penalizare overlap
-# ==========================================================
-
-def overlap_penalty(tickets):
-    """
-    Penalizează dacă biletele au prea multe meciuri comune.
-    """
-    penalty = 0
-
-    for t1, t2 in combinations(tickets, 2):
-        m1 = {b["match"] for b in t1["bets"]}
-        m2 = {b["match"] for b in t2["bets"]}
-        penalty += len(m1 & m2)
-
-    return penalty
+    return bet in allowed
 
 
 # ==========================================================
-# OPTIMIZER PRINCIPAL
+# OPTIMIZER
 # ==========================================================
 
-def build_tickets(picks):
+def build_ticket_from_pool(pool):
 
-    if not picks:
-        return [], "Nu există pickuri valide astăzi."
+    best_ticket = None
+    best_prob = 0
 
-    match_pool = group_by_match(picks)
+    # filtrăm selecțiile candidate
 
-    best_portfolio = None
-    best_score = -999
-    best_metrics = None
-    tested = 0
+    pool = [
 
-    # Testăm diferite structuri de bilete
-    for matches_per_ticket in range(
+        p for p in pool
+        if p["odds"] <= config.MAX_SELECTION_ODDS
+        and allowed_market(p["bet"])
+    ]
+
+    for size in range(
         config.MIN_MATCHES_PER_TICKET,
-        config.MAX_MATCHES_PER_TICKET + 1
+        config.MAX_MATCHES_PER_TICKET+1
     ):
 
-        for _ in range(600):
+        combos = combinations(pool,size)
 
-            if len(match_pool) < matches_per_ticket:
+        for combo in combos:
+
+            matches = {c["match"] for c in combo}
+
+            if len(matches) != len(combo):
                 continue
 
-            tickets = []
+            ticket = build_ticket(combo)
 
-            for _ in range(config.TICKETS_PER_DAY):
-
-                selected = random.sample(match_pool, matches_per_ticket)
-                bets = [random.choice(m["variants"]) for m in selected]
-
-                ticket = build_ticket(bets)
-
-                # Validare cotă totală
-                if not (config.MIN_TOTAL_ODDS <= ticket["odds"] <= config.MAX_TOTAL_ODDS):
-                    break
-
-                tickets.append(ticket)
-
-            if len(tickets) != config.TICKETS_PER_DAY:
+            if not (
+                config.MIN_TOTAL_ODDS
+                <= ticket["odds"]
+                <= config.MAX_TOTAL_ODDS
+            ):
                 continue
 
-            metrics = simulate_portfolio(tickets)
+            prob = simulate_ticket(ticket)
 
-            if metrics["prob_at_least_one"] < config.MIN_PORTFOLIO_WIN_CHANCE:
-                continue
+            if prob > best_prob:
 
-            penalty = overlap_penalty(tickets)
+                best_prob = prob
+                best_ticket = ticket
 
-            # Scor multi-obiectiv
-            score = (
-                0.6 * metrics["prob_at_least_one"] +
-                0.3 * max(0, metrics["expected_profit"] / 100) +
-                0.1 * (1 - metrics["loss_probability"])
-            ) - 0.01 * penalty
+    if not best_ticket:
+        return None, None
 
-            tested += 1
+    summary = f"""
+🧠 OPTIMIZER MATEMATIC
 
-            if score > best_score:
-                best_score = score
-                best_portfolio = tickets
-                best_metrics = metrics
+Simulări Monte Carlo: {config.SIMULATIONS}
 
-    if not best_portfolio:
-        return [], "Nu există portofoliu matematic valid astăzi."
+Probabilitate câștig bilet:
+{round(best_prob*100,2)}%
 
-    summary = (
-        f"🧠 PROFESSIONAL OPTIMIZER\n"
-        f"Portofolii testate: {tested}\n"
-        f"Simulări per portofoliu: {config.SIMULATIONS}\n"
-        f"Șansă ≥1 bilet câștigător: {round(best_metrics['prob_at_least_one']*100,2)}%\n"
-        f"Profit mediu estimat: {round(best_metrics['expected_profit'],2)} lei\n"
-        f"Probabilitate zi negativă: {round(best_metrics['loss_probability']*100,2)}%\n"
-    )
+Cotă bilet:
+{best_ticket['odds']}
+"""
 
-    return best_portfolio, summary
+    return best_ticket,summary
