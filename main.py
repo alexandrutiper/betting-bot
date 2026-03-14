@@ -1,270 +1,258 @@
 """
-ENGINE PRINCIPAL BOT BETTING
+Joker1X MAIN ENGINE
 
-Acest fișier este "creierul" aplicației.
+Botul generează două mesaje separate:
 
-Fluxul complet al botului:
-
-1️⃣ preia meciurile din Odds API
-2️⃣ filtrează meciurile din următoarele 12 ore
-3️⃣ generează DAILY PICKS
-4️⃣ construiește pool-ul pentru optimizer
-5️⃣ rulează optimizerul pentru bilet cotă 2
-6️⃣ trimite rezultatele pe Telegram
+1️⃣ Daily Picks
+2️⃣ Bilet cotă ~2
 """
 
 from datetime import datetime, timezone, timedelta
 
 import scraper
 import model
-import config
+import optimizer
 import telegram_bot
-import ticket_builder
 import market_converter
+import config
 
 
-# ==========================================================
-# 1️⃣ FETCH MATCHES
-# ==========================================================
+# ======================================================
+# INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
+# ======================================================
+
+now_local = datetime.now()
+hour = now_local.hour
+
+if hour < 15:
+
+    intro = (
+        "☀️ Bună dimineața!\n\n"
+        "🤖 Joker1X a analizat meciurile zilei și a identificat cele mai stabile oportunități.\n\n"
+    )
+
+else:
+
+    intro = (
+        "🌙 Bună seara!\n\n"
+        "🤖 Joker1X a analizat meciurile rămase ale zilei și propune următoarele selecții.\n\n"
+    )
+
+
+# ======================================================
+# COLECTARE MECIURI
+# ======================================================
 
 matches = scraper.get_matches()
 
-print("====================================================")
 print("Total meciuri primite din API:", len(matches))
 
 
-# ==========================================================
-# 2️⃣ FILTRARE MECIURI ÎN URMĂTOARELE 12 ORE
-# ==========================================================
+# ======================================================
+# FILTRARE INTERVAL
+# ======================================================
 
 now = datetime.now(timezone.utc)
 limit = now + timedelta(hours=config.MATCH_WINDOW_HOURS)
 
-filtered_matches = []
+filtered = []
 
-eliminated_started = 0
-eliminated_future = 0
+for m in matches:
 
-for match in matches:
+    try:
 
-    kickoff = datetime.fromisoformat(
-        match["commence_time"].replace("Z", "+00:00")
-    )
+        kickoff = datetime.fromisoformat(
+            m["commence_time"].replace("Z","+00:00")
+        )
+
+    except:
+        continue
 
     if kickoff <= now:
-        eliminated_started += 1
         continue
 
     if kickoff > limit:
-        eliminated_future += 1
         continue
 
-    filtered_matches.append(match)
+    filtered.append(m)
 
-matches = filtered_matches
-
-print("Meciuri în următoarele 12 ore:", len(matches))
-print("Eliminate (deja începute):", eliminated_started)
-print("Eliminate (prea departe):", eliminated_future)
-print("====================================================")
+print("Meciuri în interval:", len(filtered))
 
 
-# ==========================================================
-# 3️⃣ DAILY PICKS
-# ==========================================================
-
-daily_candidates = []
-
-for match in matches:
-
-    odds_values = list(match["odds"].values())
-
-    if len(odds_values) != 3:
-        continue
-
-    probs = model.normalize_probabilities(odds_values)
-
-    strength = model.market_strength(odds_values)
-
-    dc = model.double_chance(*probs)
-
-    for bet, prob in dc.items():
-
-        if prob < config.DAILY_MIN_PROB:
-            continue
-
-        odd = round(1 / prob, 2)
-
-        if odd < 1.15:
-            continue
-
-        daily_candidates.append({
-
-            "match": f"{match['home']} vs {match['away']}",
-            "bet": bet,
-            "prob": prob,
-            "odds": odd,
-            "strength": strength,
-            "league": match["league"]
-
-        })
-
-
-daily_candidates = sorted(
-    daily_candidates,
-    key=lambda x: x["prob"],
-    reverse=True
-)
-
-daily_candidates = daily_candidates[:config.DAILY_PICKS]
-
-
-# ==========================================================
-# TRIMITERE DAILY PICKS TELEGRAM
-# ==========================================================
-
-msg = "🔥 DAILY PICKS\n"
-msg += "━━━━━━━━━━━━━━━\n\n"
-
-if not daily_candidates:
-
-    msg += "Nu există daily picks valide în interval.\n"
-
-else:
-
-    for pick in daily_candidates:
-
-        market = market_converter.convert_market(pick["bet"])
-
-        explanation = model.pick_explanation(
-            pick["prob"],
-            pick["strength"],
-            pick["league"]
-        )
-
-        msg += f"⚽ {pick['match']}\n"
-        msg += f"➡️ {market} @{pick['odds']}\n"
-        msg += f"{explanation}\n\n"
-
-telegram_bot.send_message(msg)
-
-
-# ==========================================================
-# 4️⃣ CONSTRUIRE POOL PENTRU OPTIMIZER
-# ==========================================================
+# ======================================================
+# GENERARE SELECȚII
+# ======================================================
 
 pool = []
+daily = []
 
-for match in matches:
+for match in filtered:
 
-    odds_values = list(match["odds"].values())
+    odds = list(match["odds"].values())
 
-    if len(odds_values) != 3:
+    if None in odds:
         continue
 
-    probs = model.normalize_probabilities(odds_values)
+    probs = model.remove_vig(odds)
 
-    strength = model.market_strength(odds_values)
+    home_prob = probs[0]
+    draw_prob = probs[1]
+    away_prob = probs[2]
 
-    if strength < config.MIN_MARKET_STRENGTH:
-        continue
+    lam_home, lam_away = model.expected_goals(
+        home_prob,
+        away_prob
+    )
 
-    dc = model.double_chance(*probs)
+    home, draw, away = model.poisson_probs(
+        lam_home,
+        lam_away
+    )
 
-    dnb = model.draw_no_bet(*probs)
+    goal_dist = model.goal_distribution(
+        lam_home,
+        lam_away
+    )
 
-    markets = {**dc, **dnb}
+    markets = {}
+
+    markets.update(model.double_chance(home, draw, away))
+    markets.update(model.draw_no_bet(home, draw, away))
+    markets.update(model.goal_ranges(goal_dist))
 
     for bet, prob in markets.items():
 
-        if prob < config.MIN_SELECTION_PROB:
+        if prob <= 0:
             continue
 
         odd = 1 / prob
 
-        score = model.pick_score(
-            prob,
-            strength,
-            match["consensus"],
-            match["league"]
-        )
-
-        pool.append({
+        pick = {
 
             "match": f"{match['home']} vs {match['away']}",
-            "league": match["league"],
             "bet": bet,
             "prob": prob,
-            "odds": odd,
-            "score": score,
-            "strength": strength
+            "odds": odd
 
-        })
+        }
 
+        if prob >= config.MIN_SELECTION_PROB:
+            pool.append(pick)
 
-pool = sorted(pool, key=lambda x: x["score"], reverse=True)
-pool = pool[:40]
-
-print("Selection pool size:", len(pool))
-
-
-# ==========================================================
-# 5️⃣ OPTIMIZER BILET
-# ==========================================================
-
-ticket, summary = ticket_builder.build_ticket_from_pool(pool)
-
-# dacă nu există bilet valid
-if not ticket:
-
-    msg = "⚠️ NU EXISTĂ BILET VALID\n"
-    msg += "━━━━━━━━━━━━━━\n\n"
-
-    msg += "Algoritmul nu a găsit o combinație\n"
-    msg += "care să respecte criteriile de siguranță.\n\n"
-
-    msg += "🔎 Motive posibile:\n"
-    msg += "• prea puține meciuri în interval\n"
-    msg += "• ligi foarte volatile\n"
-    msg += "• cotele nu permit formarea unei cote 2\n\n"
-
-    msg += "⏳ Botul va încerca din nou la următoarea rulare."
-
-    telegram_bot.send_message(msg)
-
-    print("Nu există bilet valid.")
-    print("====================================================")
-
-    exit()
-
-telegram_bot.send_message(summary)
+        if (
+            prob >= config.DAILY_MIN_PROB
+            and odd >= config.MIN_DAILY_ODDS
+        ):
+            daily.append(pick)
 
 
-# ==========================================================
-# 6️⃣ FORMATARE BILET FINAL
-# ==========================================================
-
-msg = "🎯 BILET COTA 2\n"
-msg += "━━━━━━━━━━━━━━\n\n"
-
-msg += f"Cota totală: {ticket['odds']}\n\n"
-
-for bet in ticket["bets"]:
-
-    market = market_converter.convert_market(bet["bet"])
-
-    explanation = model.pick_explanation(
-        bet["prob"],
-        bet["strength"],
-        bet["league"]
-    )
-
-    msg += f"⚽ {bet['match']}\n"
-    msg += f"➡️ {market} @{round(bet['odds'],2)}\n"
-    msg += f"{explanation}\n\n"
+print("Pool înainte limitare:", len(pool))
 
 
-telegram_bot.send_message(msg)
+# ======================================================
+# LIMITARE POOL
+# ======================================================
 
-print("Bot finalizat cu succes.")
-print("====================================================")
+pool = sorted(
+    pool,
+    key=lambda x: x["prob"],
+    reverse=True
+)[:config.POOL_LIMIT]
+
+
+print("Pool după limitare:", len(pool))
+
+
+# ======================================================
+# DAILY PICKS
+# ======================================================
+
+daily = sorted(
+    daily,
+    key=lambda x: x["prob"],
+    reverse=True
+)[:config.DAILY_PICKS]
+
+
+# ======================================================
+# MESAJ 1 — DAILY PICKS
+# ======================================================
+
+msg_daily = intro
+
+msg_daily += "🔥 DAILY PICKS\n"
+msg_daily += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+msg_daily += f"⚽ Meciuri analizate: {len(filtered)}\n"
+msg_daily += f"🎯 Selecții candidate: {len(pool)}\n\n"
+
+
+for d in daily:
+
+    implied = 1 / d["odds"]
+    edge = d["prob"] - implied
+
+    msg_daily += f"⚽ {d['match']}\n"
+    msg_daily += f"➡️ {market_converter.convert(d['bet'])}\n"
+    msg_daily += f"💰 Cotă: {round(d['odds'],2)}\n"
+    msg_daily += f"📊 Prob: {round(d['prob']*100)}%\n"
+    msg_daily += f"📈 Edge: {round(edge*100,1)}%\n\n"
+
+
+msg_daily += "━━━━━━━━━━━━━━━━━━━━\n"
+msg_daily += "🤖 Joker1X Betting Model\n"
+
+
+# ======================================================
+# MESAJ 2 — BILET COTA 2
+# ======================================================
+
+msg_ticket = "🎯 BILETUL ZILEI – COTA ~2\n"
+msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+ticket = optimizer.build_ticket(pool)
+
+if ticket:
+
+    total_odds = 1
+    ticket_prob = 1
+
+    for bet in ticket:
+
+        total_odds *= bet["odds"]
+        ticket_prob *= bet["prob"]
+
+    msg_ticket += f"💰 Cotă totală: {round(total_odds,2)}\n"
+    msg_ticket += f"📊 Probabilitate model: {round(ticket_prob*100)}%\n"
+    msg_ticket += f"🎟️ Selecții: {len(ticket)}\n\n"
+
+    for bet in ticket:
+
+        implied = 1 / bet["odds"]
+        edge = bet["prob"] - implied
+
+        msg_ticket += f"⚽ {bet['match']}\n"
+        msg_ticket += f"➡️ {market_converter.convert(bet['bet'])}\n"
+        msg_ticket += f"💰 Cotă: {round(bet['odds'],2)}\n"
+        msg_ticket += f"📊 Prob: {round(bet['prob']*100)}%\n"
+        msg_ticket += f"📈 Edge: {round(edge*100,1)}%\n\n"
+
+else:
+
+    msg_ticket += "⚠️ Nu există combinație stabilă în acest interval.\n\n"
+
+
+msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n"
+msg_ticket += "🤖 Joker1X Betting Model\n"
+msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
+msg_ticket += "🍀 Mult succes!\n"
+
+
+# ======================================================
+# TRIMITERE TELEGRAM
+# ======================================================
+
+telegram_bot.send_message(msg_daily)
+telegram_bot.send_message(msg_ticket)
+
+print("Mesaje trimise către Telegram.")

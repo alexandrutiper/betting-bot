@@ -1,14 +1,117 @@
+
+"""
+SCRAPER ODDS API
+
+Acest modul colectează meciurile și cotele bookmakerilor.
+
+Se folosește endpointul:
+sports/upcoming/odds
+
+Avantaj:
+un singur request API pentru toate ligile.
+"""
+
 import requests
-from bs4 import BeautifulSoup
+import statistics
+import config
 
-url = "https://www.flashscore.com/football/"
+URL = "https://api.the-odds-api.com/v4/sports/upcoming/odds"
 
-headers = {
-    "User-Agent": "Mozilla/5.0"
-}
 
-response = requests.get(url, headers=headers)
+def get_matches():
 
-soup = BeautifulSoup(response.text, "lxml")
+    params = {
+        "apiKey": config.ODDS_API_KEY,
+        "regions": "eu",
+        "markets": "h2h,totals",
+        "oddsFormat": "decimal"
+    }
 
-print(soup.title.text)
+    try:
+        r = requests.get(URL, params=params, timeout=15)
+    except:
+        return []
+
+    if r.status_code != 200:
+        return []
+
+    data = r.json()
+
+    matches = []
+
+    for game in data:
+
+        try:
+
+            home = game["home_team"]
+            away = game["away_team"]
+
+            commence_time = game.get("commence_time")
+
+            bookmakers = game.get("bookmakers", [])
+
+            odds_home=[]
+            odds_draw=[]
+            odds_away=[]
+            odds_over15=[]
+            odds_under45=[]
+
+            for book in bookmakers:
+
+                for market in book.get("markets", []):
+
+                    key = market.get("key")
+
+                    if key == "h2h":
+
+                        for o in market.get("outcomes", []):
+
+                            name=o.get("name")
+                            price=o.get("price")
+
+                            if name==home:
+                                odds_home.append(price)
+
+                            elif name==away:
+                                odds_away.append(price)
+
+                            else:
+                                odds_draw.append(price)
+
+                    if key=="totals":
+
+                        for o in market.get("outcomes", []):
+
+                            if o.get("name")=="Over" and o.get("point")==1.5:
+                                odds_over15.append(o.get("price"))
+
+                            if o.get("name")=="Under" and o.get("point")==4.5:
+                                odds_under45.append(o.get("price"))
+
+            if not odds_home or not odds_away:
+                continue
+
+            matches.append({
+
+                "home":home,
+                "away":away,
+
+                "commence_time":commence_time,
+
+                "odds":{
+                    "1":statistics.mean(odds_home),
+                    "X":statistics.mean(odds_draw),
+                    "2":statistics.mean(odds_away)
+                },
+
+                "goals":{
+                    "over15":statistics.mean(odds_over15) if odds_over15 else None,
+                    "under45":statistics.mean(odds_under45) if odds_under45 else None
+                }
+
+            })
+
+        except:
+            continue
+
+    return matches

@@ -1,177 +1,118 @@
+
 """
 MODEL MATEMATIC
 
-Acest modul conține toate formulele matematice
-folosite pentru evaluarea pariurilor.
+Acest modul implementează:
 
-Modele implementate:
-
-• normalizare probabilități
-• market strength
-• league reliability
-• volatility penalty
-• Poisson goals model
+1 eliminarea marjei bookmaker
+2 estimarea golurilor așteptate
+3 distribuția Poisson
+4 probabilități pentru piețe
 """
 
-import leagues
 import math
 
 
-# ==========================================================
-# NORMALIZARE PROBABILITĂȚI
-# ==========================================================
+def remove_vig(odds):
 
-def normalize_probabilities(odds):
+    inv=[1/o for o in odds]
 
-    inv = [1/o for o in odds]
-
-    total = sum(inv)
+    total=sum(inv)
 
     return [p/total for p in inv]
 
 
-# ==========================================================
-# MARKET STRENGTH
-# ==========================================================
+def poisson(k,lam):
 
-def market_strength(odds):
-
-    ordered = sorted(odds)
-
-    best = ordered[0]
-    second = ordered[1]
-
-    return second / best
+    return (lam**k*math.exp(-lam))/math.factorial(k)
 
 
-# ==========================================================
-# DOUBLE CHANCE
-# ==========================================================
+def expected_goals(home_prob,away_prob):
+
+    total_goals=2.6
+
+    ratio=home_prob/away_prob if away_prob else 1
+
+    lam_home=total_goals*ratio/(1+ratio)
+    lam_away=total_goals/(1+ratio)
+
+    return lam_home,lam_away
+
+
+def goal_distribution(lam_home,lam_away):
+
+    dist={}
+
+    for i in range(7):
+        for j in range(7):
+
+            p=poisson(i,lam_home)*poisson(j,lam_away)
+
+            total=i+j
+
+            dist[total]=dist.get(total,0)+p
+
+    return dist
+
 
 def double_chance(home,draw,away):
 
-    return {
+    return{
 
-        "1X": home + draw,
-        "X2": draw + away
+        "1X":home+draw,
+        "X2":draw+away
     }
 
-
-# ==========================================================
-# DRAW NO BET
-# ==========================================================
 
 def draw_no_bet(home,draw,away):
 
-    if draw >= 0.99:
+    if draw>0.95:
         return {}
 
-    home_dnb = home/(1-draw)
+    return{
 
-    return {
-
-        "home_dnb": home_dnb
+        "home_dnb":home/(1-draw),
+        "away_dnb":away/(1-draw)
     }
 
 
-# ==========================================================
-# POISSON MODEL
-# ==========================================================
+def goal_ranges(dist):
 
-def poisson_prob(lmbda,k):
+    return{
 
-    return (lmbda**k * math.exp(-lmbda)) / math.factorial(k)
+        "goals_1_4":dist.get(1,0)+dist.get(2,0)+dist.get(3,0)+dist.get(4,0),
 
+        "goals_2_6":dist.get(2,0)+dist.get(3,0)+dist.get(4,0)+dist.get(5,0)+dist.get(6,0)
+    }
 
-def over15_probability(home_attack,away_attack):
-
-    lam = home_attack + away_attack
-
-    p0 = poisson_prob(lam,0)
-    p1 = poisson_prob(lam,1)
-
-    return 1 - (p0+p1)
-
-
-# ==========================================================
-# LEAGUE FACTOR
-# ==========================================================
-
-def league_factor(league):
-
-    priority = leagues.LEAGUE_PRIORITY.get(league,1)
-
-    if priority == 3:
-        return 1.15
-
-    if priority == 2:
-        return 1.05
-
-    return 0.9
-
-
-# ==========================================================
-# VOLATILITY PENALTY
-# ==========================================================
-
-VOLATILE = {
-
-    "soccer_usa_mls",
-    "soccer_australia_aleague",
-    "soccer_chile_primera_division",
-    "soccer_mexico_ligamx"
-}
-
-def volatility_penalty(league):
-
-    if league in VOLATILE:
-        return 0.80
-
-    return 1.0
-
-
-# ==========================================================
-# SCOR FINAL PICK
-# ==========================================================
-
-def pick_score(prob,strength,consensus,league):
-
-    score = prob * strength / (1+consensus)
-
-    score *= league_factor(league)
-
-    score *= volatility_penalty(league)
-
-    return score
-
-# ==========================================================
-# EXPLICAȚIE PICK
-# ==========================================================
-
-def pick_explanation(prob, strength, league):
-
+def poisson_probs(lam_home, lam_away):
     """
-    Generează o explicație foarte scurtă
-    pentru selecția făcută de algoritm.
+    Calculează probabilitățile pentru:
+    - victorie gazde
+    - egal
+    - victorie oaspeți
 
-    Aceasta este trimisă pe Telegram
-    pentru a înțelege de ce a fost ales pariul.
+    folosind distribuția Poisson pentru golurile
+    marcate de fiecare echipă.
     """
 
-    prob_percent = round(prob * 100)
+    home = 0
+    draw = 0
+    away = 0
 
-    if strength > 1.5:
-        fav = "Fav puternic"
-    elif strength > 1.3:
-        fav = "Fav clar"
-    else:
-        fav = "Fav moderat"
+    # iterăm scoruri posibile 0-0 până la 6-6
+    for i in range(7):
+        for j in range(7):
 
-    if league_factor(league) > 1.1:
-        league_label = "Liga stabilă"
-    elif league_factor(league) > 1.0:
-        league_label = "Liga ok"
-    else:
-        league_label = "Liga volatilă"
+            p = poisson(i, lam_home) * poisson(j, lam_away)
 
-    return f"📊 Prob: {prob_percent}% | {fav} | {league_label}"
+            if i > j:
+                home += p
+
+            elif i == j:
+                draw += p
+
+            else:
+                away += p
+
+    return home, draw, away
