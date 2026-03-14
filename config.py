@@ -1,4 +1,4 @@
-import os
+
 """
 CONFIGURAȚII GENERALE BOT
 
@@ -8,30 +8,20 @@ fără modificarea codului principal.
 """
 
 # ======================================================
-# TELEGRAM CONFIG
+# TELEGRAM
 # ======================================================
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+# Token Telegram (obligatoriu pentru funcționare bot)
+TELEGRAM_TOKEN = "8655935129:AAEje7CUsVTK5AHkQb3tniPk5PgsaSVhAPQ"
+
+# Chat ID unde trimite mesajele
+CHAT_ID = "6846683629"
 
 # ======================================================
 # ODDS API
 # ======================================================
 
-ODDS_API_KEY = os.getenv("ODDS_API_KEY")
-
-# ======================================================
-# VALIDARE CONFIG
-# ======================================================
-
-if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN missing from Railway Variables")
-
-if not CHAT_ID:
-    raise ValueError("CHAT_ID missing from Railway Variables")
-
-if not ODDS_API_KEY:
-    raise ValueError("ODDS_API_KEY missing from Railway Variables")
+ODDS_API_KEY = "21ff2c49824165e71d5444bec23196e1"
 
 # ======================================================
 # FEREASTRA MECIURI
@@ -60,7 +50,7 @@ MAX_SELECTION_ODDS = 1.28
 # MONTE CARLO
 # ======================================================
 
-SIMULATIONS = 300000
+SIMULATIONS = 100000
 
 # ======================================================
 # DAILY PICKS
@@ -82,7 +72,7 @@ Reducerea pool-ului reduce dramatic
 numărul de combinații.
 """
 
-POOL_LIMIT = 40
+POOL_LIMIT = 30
 
 
 """
@@ -90,4 +80,4 @@ Numărul de bilete candidate
 evaluate cu Monte Carlo.
 """
 
-FINAL_TICKET_CANDIDATES = 15
+FINAL_TICKET_CANDIDATES = 10
