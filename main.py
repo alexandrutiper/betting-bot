@@ -13,10 +13,6 @@ Fluxul complet:
 6️⃣ Construim biletul cotă ~2 folosind optimizerul
 7️⃣ Construim mesajele Telegram
 8️⃣ Trimitem mesajele
-
-Botul trimite două mesaje separate:
-- Daily Picks
-- Bilet Cotă ~2
 """
 
 from datetime import datetime, timezone, timedelta
@@ -29,7 +25,7 @@ import market_converter
 import config
 
 
-try:
+def main():
 
     # ======================================================
     # INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
@@ -51,7 +47,6 @@ try:
             "🤖 Joker1X a analizat meciurile rămase ale zilei și propune următoarele selecții.\n\n"
         )
 
-
     # ======================================================
     # COLECTARE MECIURI DIN API
     # ======================================================
@@ -60,13 +55,11 @@ try:
 
     print("Total meciuri primite din API:", len(matches))
 
-
     # ======================================================
     # FILTRARE MECIURI DUPĂ INTERVAL
     # ======================================================
 
     now = datetime.now(timezone.utc)
-
     limit = now + timedelta(hours=config.MATCH_WINDOW_HOURS)
 
     filtered = []
@@ -92,7 +85,6 @@ try:
 
     print("Meciuri în interval:", len(filtered))
 
-
     # ======================================================
     # GENERARE SELECȚII CANDIDATE
     # ======================================================
@@ -107,26 +99,22 @@ try:
         if None in odds:
             continue
 
-        # eliminăm marja bookmakerului
         probs = model.remove_vig(odds)
 
         home_prob = probs[0]
         draw_prob = probs[1]
         away_prob = probs[2]
 
-        # estimăm golurile așteptate
         lam_home, lam_away = model.expected_goals(
             home_prob,
             away_prob
         )
 
-        # probabilități rezultate
         home, draw, away = model.poisson_probs(
             lam_home,
             lam_away
         )
 
-        # distribuția golurilor
         goal_dist = model.goal_distribution(
             lam_home,
             lam_away
@@ -146,31 +134,25 @@ try:
             odd = 1 / prob
 
             pick = {
-
                 "match": f"{match['home']} vs {match['away']}",
                 "bet": bet,
                 "prob": prob,
                 "odds": odd
-
             }
 
-            # selecții pentru bilet
             if prob >= config.MIN_SELECTION_PROB:
                 pool.append(pick)
 
-            # selecții pentru Daily Picks
             if (
                 prob >= config.DAILY_MIN_PROB
                 and odd >= config.MIN_DAILY_ODDS
             ):
                 daily.append(pick)
 
-
     print("Pool înainte limitare:", len(pool))
 
-
     # ======================================================
-    # LIMITARE POOL (optimizare performanță)
+    # LIMITARE POOL
     # ======================================================
 
     pool = sorted(
@@ -181,7 +163,6 @@ try:
 
     print("Pool după limitare:", len(pool))
 
-
     # ======================================================
     # DAILY PICKS
     # ======================================================
@@ -191,7 +172,6 @@ try:
         key=lambda x: x["prob"],
         reverse=True
     )[:config.DAILY_PICKS]
-
 
     # ======================================================
     # MESAJ DAILY PICKS
@@ -219,7 +199,6 @@ try:
     msg_daily += "━━━━━━━━━━━━━━━━━━━━\n"
     msg_daily += "🤖 Joker1X Betting Model\n"
 
-
     # ======================================================
     # CONSTRUIRE BILET COTA ~2
     # ======================================================
@@ -235,7 +214,6 @@ try:
         ticket_prob = 1
 
         for bet in ticket:
-
             total_odds *= bet["odds"]
             ticket_prob *= bet["prob"]
 
@@ -258,12 +236,10 @@ try:
 
         msg_ticket += "⚠️ Nu există combinație stabilă pentru acest interval.\n\n"
 
-
     msg_ticket += "\n━━━━━━━━━━━━━━━━━━━━\n"
     msg_ticket += "🤖 Joker1X Betting Model\n"
     msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
     msg_ticket += "🍀 Mult succes!\n"
-
 
     # ======================================================
     # TRIMITERE TELEGRAM
@@ -275,14 +251,16 @@ try:
     print("Mesaje trimise către Telegram.")
 
 
-import traceback
+if __name__ == "__main__":
 
-except Exception as e:
+    try:
+        main()
 
-    print("===== JOKER1X ERROR =====")
-    print(str(e))
-    traceback.print_exc()
-    print("==========================")
+    except Exception as e:
 
-    # nu mai aruncăm eroarea mai departe
-    # astfel Railway nu marchează jobul ca crashed
+        import traceback
+
+        print("===== JOKER1X ERROR =====")
+        print(str(e))
+        traceback.print_exc()
+        print("==========================")
