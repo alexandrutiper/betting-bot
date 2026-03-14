@@ -1,3 +1,4 @@
+
 """
 Joker1X MAIN ENGINE
 
@@ -17,242 +18,246 @@ import market_converter
 import config
 
 
-# ======================================================
-# INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
-# ======================================================
+try:
 
-now_local = datetime.now()
-hour = now_local.hour
+    # ======================================================
+    # INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
+    # ======================================================
 
-if hour < 15:
+    now_local = datetime.now()
+    hour = now_local.hour
 
-    intro = (
-        "☀️ Bună dimineața!\n\n"
-        "🤖 Joker1X a analizat meciurile zilei și a identificat cele mai stabile oportunități.\n\n"
-    )
+    if hour < 15:
 
-else:
-
-    intro = (
-        "🌙 Bună seara!\n\n"
-        "🤖 Joker1X a analizat meciurile rămase ale zilei și propune următoarele selecții.\n\n"
-    )
-
-
-# ======================================================
-# COLECTARE MECIURI
-# ======================================================
-
-matches = scraper.get_matches()
-
-print("Total meciuri primite din API:", len(matches))
-
-
-# ======================================================
-# FILTRARE INTERVAL
-# ======================================================
-
-now = datetime.now(timezone.utc)
-limit = now + timedelta(hours=config.MATCH_WINDOW_HOURS)
-
-filtered = []
-
-for m in matches:
-
-    try:
-
-        kickoff = datetime.fromisoformat(
-            m["commence_time"].replace("Z","+00:00")
+        intro = (
+            "☀️ Bună dimineața!\n\n"
+            "🤖 Joker1X a analizat meciurile zilei și a identificat cele mai stabile oportunități.\n\n"
         )
 
-    except:
-        continue
+    else:
 
-    if kickoff <= now:
-        continue
-
-    if kickoff > limit:
-        continue
-
-    filtered.append(m)
-
-print("Meciuri în interval:", len(filtered))
+        intro = (
+            "🌙 Bună seara!\n\n"
+            "🤖 Joker1X a analizat meciurile rămase ale zilei și propune următoarele selecții.\n\n"
+        )
 
 
-# ======================================================
-# GENERARE SELECȚII
-# ======================================================
+    # ======================================================
+    # COLECTARE MECIURI
+    # ======================================================
 
-pool = []
-daily = []
+    matches = scraper.get_matches()
 
-for match in filtered:
+    print("Total meciuri primite din API:", len(matches))
 
-    odds = list(match["odds"].values())
 
-    if None in odds:
-        continue
+    # ======================================================
+    # FILTRARE INTERVAL
+    # ======================================================
 
-    probs = model.remove_vig(odds)
+    now = datetime.now(timezone.utc)
+    limit = now + timedelta(hours=config.MATCH_WINDOW_HOURS)
 
-    home_prob = probs[0]
-    draw_prob = probs[1]
-    away_prob = probs[2]
+    filtered = []
 
-    lam_home, lam_away = model.expected_goals(
-        home_prob,
-        away_prob
-    )
+    for m in matches:
 
-    home, draw, away = model.poisson_probs(
-        lam_home,
-        lam_away
-    )
+        try:
 
-    goal_dist = model.goal_distribution(
-        lam_home,
-        lam_away
-    )
+            kickoff = datetime.fromisoformat(
+                m["commence_time"].replace("Z","+00:00")
+            )
 
-    markets = {}
-
-    markets.update(model.double_chance(home, draw, away))
-    markets.update(model.draw_no_bet(home, draw, away))
-    markets.update(model.goal_ranges(goal_dist))
-
-    for bet, prob in markets.items():
-
-        if prob <= 0:
+        except:
             continue
 
-        odd = 1 / prob
+        if kickoff <= now:
+            continue
 
-        pick = {
+        if kickoff > limit:
+            continue
 
-            "match": f"{match['home']} vs {match['away']}",
-            "bet": bet,
-            "prob": prob,
-            "odds": odd
+        filtered.append(m)
 
-        }
-
-        if prob >= config.MIN_SELECTION_PROB:
-            pool.append(pick)
-
-        if (
-            prob >= config.DAILY_MIN_PROB
-            and odd >= config.MIN_DAILY_ODDS
-        ):
-            daily.append(pick)
+    print("Meciuri în interval:", len(filtered))
 
 
-print("Pool înainte limitare:", len(pool))
+    # ======================================================
+    # GENERARE SELECȚII
+    # ======================================================
+
+    pool = []
+    daily = []
+
+    for match in filtered:
+
+        odds = list(match["odds"].values())
+
+        if None in odds:
+            continue
+
+        probs = model.remove_vig(odds)
+
+        home_prob = probs[0]
+        draw_prob = probs[1]
+        away_prob = probs[2]
+
+        lam_home, lam_away = model.expected_goals(
+            home_prob,
+            away_prob
+        )
+
+        home, draw, away = model.poisson_probs(
+            lam_home,
+            lam_away
+        )
+
+        goal_dist = model.goal_distribution(
+            lam_home,
+            lam_away
+        )
+
+        markets = {}
+
+        markets.update(model.double_chance(home, draw, away))
+        markets.update(model.draw_no_bet(home, draw, away))
+        markets.update(model.goal_ranges(goal_dist))
+
+        for bet, prob in markets.items():
+
+            if prob <= 0:
+                continue
+
+            odd = 1 / prob
+
+            pick = {
+
+                "match": f"{match['home']} vs {match['away']}",
+                "bet": bet,
+                "prob": prob,
+                "odds": odd
+
+            }
+
+            if prob >= config.MIN_SELECTION_PROB:
+                pool.append(pick)
+
+            if (
+                prob >= config.DAILY_MIN_PROB
+                and odd >= config.MIN_DAILY_ODDS
+            ):
+                daily.append(pick)
 
 
-# ======================================================
-# LIMITARE POOL
-# ======================================================
-
-pool = sorted(
-    pool,
-    key=lambda x: x["prob"],
-    reverse=True
-)[:config.POOL_LIMIT]
+    print("Pool înainte limitare:", len(pool))
 
 
-print("Pool după limitare:", len(pool))
+    # ======================================================
+    # LIMITARE POOL
+    # ======================================================
+
+    pool = sorted(
+        pool,
+        key=lambda x: x["prob"],
+        reverse=True
+    )[:config.POOL_LIMIT]
 
 
-# ======================================================
-# DAILY PICKS
-# ======================================================
-
-daily = sorted(
-    daily,
-    key=lambda x: x["prob"],
-    reverse=True
-)[:config.DAILY_PICKS]
+    print("Pool după limitare:", len(pool))
 
 
-# ======================================================
-# MESAJ 1 — DAILY PICKS
-# ======================================================
+    # ======================================================
+    # DAILY PICKS
+    # ======================================================
 
-msg_daily = intro
-
-msg_daily += "🔥 DAILY PICKS\n"
-msg_daily += "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-msg_daily += f"⚽ Meciuri analizate: {len(filtered)}\n"
-msg_daily += f"🎯 Selecții candidate: {len(pool)}\n\n"
+    daily = sorted(
+        daily,
+        key=lambda x: x["prob"],
+        reverse=True
+    )[:config.DAILY_PICKS]
 
 
-for d in daily:
+    # ======================================================
+    # MESAJ DAILY PICKS
+    # ======================================================
 
-    implied = 1 / d["odds"]
-    edge = d["prob"] - implied
+    msg_daily = intro
 
-    msg_daily += f"⚽ {d['match']}\n"
-    msg_daily += f"➡️ {market_converter.convert(d['bet'])}\n"
-    msg_daily += f"💰 Cotă: {round(d['odds'],2)}\n"
-    msg_daily += f"📊 Prob: {round(d['prob']*100)}%\n"
-    msg_daily += f"📈 Edge: {round(edge*100,1)}%\n\n"
+    msg_daily += "🔥 DAILY PICKS\n"
+    msg_daily += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
+    msg_daily += f"⚽ Meciuri analizate: {len(filtered)}\n"
+    msg_daily += f"🎯 Selecții candidate: {len(pool)}\n\n"
 
-msg_daily += "━━━━━━━━━━━━━━━━━━━━\n"
-msg_daily += "🤖 Joker1X Betting Model\n"
+    for d in daily:
 
+        implied = 1 / d["odds"]
+        edge = d["prob"] - implied
 
-# ======================================================
-# MESAJ 2 — BILET COTA 2
-# ======================================================
+        msg_daily += f"⚽ {d['match']}\n"
+        msg_daily += f"➡️ {market_converter.convert(d['bet'])}\n"
+        msg_daily += f"💰 Cotă: {round(d['odds'],2)}\n"
+        msg_daily += f"📊 Prob: {round(d['prob']*100)}%\n"
+        msg_daily += f"📈 Edge: {round(edge*100,1)}%\n\n"
 
-msg_ticket = "🎯 BILETUL ZILEI – COTA ~2\n"
-msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-ticket = optimizer.build_ticket(pool)
-
-if ticket:
-
-    total_odds = 1
-    ticket_prob = 1
-
-    for bet in ticket:
-
-        total_odds *= bet["odds"]
-        ticket_prob *= bet["prob"]
-
-    msg_ticket += f"💰 Cotă totală: {round(total_odds,2)}\n"
-    msg_ticket += f"📊 Probabilitate model: {round(ticket_prob*100)}%\n"
-    msg_ticket += f"🎟️ Selecții: {len(ticket)}\n\n"
-
-    for bet in ticket:
-
-        implied = 1 / bet["odds"]
-        edge = bet["prob"] - implied
-
-        msg_ticket += f"⚽ {bet['match']}\n"
-        msg_ticket += f"➡️ {market_converter.convert(bet['bet'])}\n"
-        msg_ticket += f"💰 Cotă: {round(bet['odds'],2)}\n"
-        msg_ticket += f"📊 Prob: {round(bet['prob']*100)}%\n"
-        msg_ticket += f"📈 Edge: {round(edge*100,1)}%\n\n"
-
-else:
-
-    msg_ticket += "⚠️ Nu există combinație stabilă în acest interval.\n\n"
+    msg_daily += "━━━━━━━━━━━━━━━━━━━━\n"
+    msg_daily += "🤖 Joker1X Betting Model\n"
 
 
-msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n"
-msg_ticket += "🤖 Joker1X Betting Model\n"
-msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
-msg_ticket += "🍀 Mult succes!\n"
+    # ======================================================
+    # BILET COTA 2
+    # ======================================================
+
+    msg_ticket = "🎯 BILETUL ZILEI – COTA ~2\n"
+    msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    ticket, summary = optimizer.build_ticket(pool)
+
+    if ticket:
+
+        total_odds = 1
+        ticket_prob = 1
+
+        for bet in ticket:
+
+            total_odds *= bet["odds"]
+            ticket_prob *= bet["prob"]
+
+        msg_ticket += f"💰 Cotă totală: {round(total_odds,2)}\n"
+        msg_ticket += f"📊 Probabilitate model: {round(ticket_prob*100)}%\n"
+        msg_ticket += f"🎟️ Selecții: {len(ticket)}\n\n"
+
+        for bet in ticket:
+
+            implied = 1 / bet["odds"]
+            edge = bet["prob"] - implied
+
+            msg_ticket += f"⚽ {bet['match']}\n"
+            msg_ticket += f"➡️ {market_converter.convert(bet['bet'])}\n"
+            msg_ticket += f"💰 Cotă: {round(bet['odds'],2)}\n"
+            msg_ticket += f"📊 Prob: {round(bet['prob']*100)}%\n"
+            msg_ticket += f"📈 Edge: {round(edge*100,1)}%\n\n"
+
+    else:
+
+        msg_ticket += "⚠️ Nu există combinație stabilă pentru acest interval.\n\n"
+
+    msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n"
+    msg_ticket += "🤖 Joker1X Betting Model\n"
+    msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
+    msg_ticket += "🍀 Mult succes!\n"
 
 
-# ======================================================
-# TRIMITERE TELEGRAM
-# ======================================================
+    # ======================================================
+    # TRIMITERE TELEGRAM
+    # ======================================================
 
-telegram_bot.send_message(msg_daily)
-telegram_bot.send_message(msg_ticket)
+    telegram_bot.send_message(msg_daily)
+    telegram_bot.send_message(msg_ticket)
 
-print("Mesaje trimise către Telegram.")
+    print("Mesaje trimise către Telegram.")
+
+
+except Exception as e:
+
+    print("ERROR:", e)
