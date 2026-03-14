@@ -275,6 +275,14 @@ try:
     print("Mesaje trimise către Telegram.")
 
 
+import traceback
+
 except Exception as e:
 
-    print("ERROR:", e)
+    print("===== JOKER1X ERROR =====")
+    print(str(e))
+    traceback.print_exc()
+    print("==========================")
+
+    # nu mai aruncăm eroarea mai departe
+    # astfel Railway nu marchează jobul ca crashed
