@@ -8,10 +8,6 @@ fără modificarea codului principal.
 """
 
 # ======================================================
-# TELEGRAM
-# ======================================================
-
-# ======================================================
 # TELEGRAM CONFIG
 # ======================================================
 
@@ -23,6 +19,19 @@ CHAT_ID = os.getenv("CHAT_ID")
 # ======================================================
 
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+
+# ======================================================
+# VALIDARE CONFIG
+# ======================================================
+
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN missing from Railway Variables")
+
+if not CHAT_ID:
+    raise ValueError("CHAT_ID missing from Railway Variables")
+
+if not ODDS_API_KEY:
+    raise ValueError("ODDS_API_KEY missing from Railway Variables")
 
 # ======================================================
 # FEREASTRA MECIURI
