@@ -1,11 +1,22 @@
-
 """
 Joker1X MAIN ENGINE
 
-Botul generează două mesaje separate:
+Acest fișier este orchestratorul principal al botului.
 
-1️⃣ Daily Picks
-2️⃣ Bilet cotă ~2
+Fluxul complet:
+
+1️⃣ Preluăm meciurile din Odds API
+2️⃣ Filtrăm meciurile care încep în următoarele X ore
+3️⃣ Calculăm probabilitățile folosind modelul matematic
+4️⃣ Construim pool-ul de selecții candidate
+5️⃣ Generăm Daily Picks
+6️⃣ Construim biletul cotă ~2 folosind optimizerul
+7️⃣ Construim mesajele Telegram
+8️⃣ Trimitem mesajele
+
+Botul trimite două mesaje separate:
+- Daily Picks
+- Bilet Cotă ~2
 """
 
 from datetime import datetime, timezone, timedelta
@@ -24,8 +35,7 @@ try:
     # INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
     # ======================================================
 
-    now_local = datetime.now()
-    hour = now_local.hour
+    hour = datetime.now().hour
 
     if hour < 15:
 
@@ -43,7 +53,7 @@ try:
 
 
     # ======================================================
-    # COLECTARE MECIURI
+    # COLECTARE MECIURI DIN API
     # ======================================================
 
     matches = scraper.get_matches()
@@ -52,10 +62,11 @@ try:
 
 
     # ======================================================
-    # FILTRARE INTERVAL
+    # FILTRARE MECIURI DUPĂ INTERVAL
     # ======================================================
 
     now = datetime.now(timezone.utc)
+
     limit = now + timedelta(hours=config.MATCH_WINDOW_HOURS)
 
     filtered = []
@@ -65,7 +76,7 @@ try:
         try:
 
             kickoff = datetime.fromisoformat(
-                m["commence_time"].replace("Z","+00:00")
+                m["commence_time"].replace("Z", "+00:00")
             )
 
         except:
@@ -83,7 +94,7 @@ try:
 
 
     # ======================================================
-    # GENERARE SELECȚII
+    # GENERARE SELECȚII CANDIDATE
     # ======================================================
 
     pool = []
@@ -96,22 +107,26 @@ try:
         if None in odds:
             continue
 
+        # eliminăm marja bookmakerului
         probs = model.remove_vig(odds)
 
         home_prob = probs[0]
         draw_prob = probs[1]
         away_prob = probs[2]
 
+        # estimăm golurile așteptate
         lam_home, lam_away = model.expected_goals(
             home_prob,
             away_prob
         )
 
+        # probabilități rezultate
         home, draw, away = model.poisson_probs(
             lam_home,
             lam_away
         )
 
+        # distribuția golurilor
         goal_dist = model.goal_distribution(
             lam_home,
             lam_away
@@ -139,9 +154,11 @@ try:
 
             }
 
+            # selecții pentru bilet
             if prob >= config.MIN_SELECTION_PROB:
                 pool.append(pick)
 
+            # selecții pentru Daily Picks
             if (
                 prob >= config.DAILY_MIN_PROB
                 and odd >= config.MIN_DAILY_ODDS
@@ -153,7 +170,7 @@ try:
 
 
     # ======================================================
-    # LIMITARE POOL
+    # LIMITARE POOL (optimizare performanță)
     # ======================================================
 
     pool = sorted(
@@ -161,7 +178,6 @@ try:
         key=lambda x: x["prob"],
         reverse=True
     )[:config.POOL_LIMIT]
-
 
     print("Pool după limitare:", len(pool))
 
@@ -205,13 +221,13 @@ try:
 
 
     # ======================================================
-    # BILET COTA 2
+    # CONSTRUIRE BILET COTA ~2
     # ======================================================
 
     msg_ticket = "🎯 BILETUL ZILEI – COTA ~2\n"
     msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    ticket, summary = optimizer.build_ticket(pool)
+    ticket = optimizer.build_ticket(pool)
 
     if ticket:
 
@@ -242,7 +258,8 @@ try:
 
         msg_ticket += "⚠️ Nu există combinație stabilă pentru acest interval.\n\n"
 
-    msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n"
+
+    msg_ticket += "\n━━━━━━━━━━━━━━━━━━━━\n"
     msg_ticket += "🤖 Joker1X Betting Model\n"
     msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
     msg_ticket += "🍀 Mult succes!\n"
