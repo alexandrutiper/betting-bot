@@ -1,21 +1,14 @@
 """
 Joker1X MAIN ENGINE
+VERSIUNE DEBUGGING COMPLET PENTRU RAILWAY
 
-Acest fișier este orchestratorul principal al botului.
-
-Fluxul complet:
-
-1️⃣ Preluăm meciurile din Odds API
-2️⃣ Filtrăm meciurile care încep în următoarele X ore
-3️⃣ Calculăm probabilitățile folosind modelul matematic
-4️⃣ Construim pool-ul de selecții candidate
-5️⃣ Generăm Daily Picks
-6️⃣ Construim biletul cotă ~2 folosind optimizerul
-7️⃣ Construim mesajele Telegram
-8️⃣ Trimitem mesajele
+Acest fișier loghează fiecare etapă pentru a identifica
+exact unde apare eroarea în producție.
 """
 
 from datetime import datetime, timezone, timedelta
+import traceback
+import sys
 
 import scraper
 import model
@@ -25,38 +18,48 @@ import market_converter
 import config
 
 
+def log(step):
+    """
+    Funcție simplă pentru logging clar în Railway.
+    """
+    print(f"[JOKER1X] {step}", flush=True)
+
+
 def main():
 
+    log("START BOT")
+
     # ======================================================
-    # INTRO DINAMIC (DIMINEAȚĂ / SEARĂ)
+    # INTRO
     # ======================================================
 
     hour = datetime.now().hour
 
     if hour < 15:
-
         intro = (
             "☀️ Bună dimineața!\n\n"
-            "🤖 Joker1X a analizat meciurile zilei și a identificat cele mai stabile oportunități.\n\n"
+            "🤖 Joker1X a analizat meciurile zilei.\n\n"
         )
-
     else:
-
         intro = (
             "🌙 Bună seara!\n\n"
-            "🤖 Joker1X a analizat meciurile rămase ale zilei și propune următoarele selecții.\n\n"
+            "🤖 Joker1X a analizat meciurile rămase.\n\n"
         )
 
+    log("INTRO GENERATED")
+
     # ======================================================
-    # COLECTARE MECIURI DIN API
+    # GET MATCHES
     # ======================================================
+
+    log("REQUEST MATCHES FROM API")
 
     matches = scraper.get_matches()
 
-    print("Total meciuri primite din API:", len(matches))
+    log(f"MATCHES RECEIVED: {len(matches)}")
 
     # ======================================================
-    # FILTRARE MECIURI DUPĂ INTERVAL
+    # FILTER MATCHES
     # ======================================================
 
     now = datetime.now(timezone.utc)
@@ -83,14 +86,16 @@ def main():
 
         filtered.append(m)
 
-    print("Meciuri în interval:", len(filtered))
+    log(f"MATCHES IN WINDOW: {len(filtered)}")
 
     # ======================================================
-    # GENERARE SELECȚII CANDIDATE
+    # GENERATE SELECTIONS
     # ======================================================
 
     pool = []
     daily = []
+
+    log("START MODEL PROCESSING")
 
     for match in filtered:
 
@@ -149,10 +154,10 @@ def main():
             ):
                 daily.append(pick)
 
-    print("Pool înainte limitare:", len(pool))
+    log(f"POOL BEFORE LIMIT: {len(pool)}")
 
     # ======================================================
-    # LIMITARE POOL
+    # LIMIT POOL
     # ======================================================
 
     pool = sorted(
@@ -161,7 +166,7 @@ def main():
         reverse=True
     )[:config.POOL_LIMIT]
 
-    print("Pool după limitare:", len(pool))
+    log(f"POOL AFTER LIMIT: {len(pool)}")
 
     # ======================================================
     # DAILY PICKS
@@ -173,8 +178,10 @@ def main():
         reverse=True
     )[:config.DAILY_PICKS]
 
+    log(f"DAILY PICKS COUNT: {len(daily)}")
+
     # ======================================================
-    # MESAJ DAILY PICKS
+    # DAILY MESSAGE
     # ======================================================
 
     msg_daily = intro
@@ -182,85 +189,82 @@ def main():
     msg_daily += "🔥 DAILY PICKS\n"
     msg_daily += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    msg_daily += f"⚽ Meciuri analizate: {len(filtered)}\n"
-    msg_daily += f"🎯 Selecții candidate: {len(pool)}\n\n"
-
     for d in daily:
-
-        implied = 1 / d["odds"]
-        edge = d["prob"] - implied
 
         msg_daily += f"⚽ {d['match']}\n"
         msg_daily += f"➡️ {market_converter.convert(d['bet'])}\n"
         msg_daily += f"💰 Cotă: {round(d['odds'],2)}\n"
-        msg_daily += f"📊 Prob: {round(d['prob']*100)}%\n"
-        msg_daily += f"📈 Edge: {round(edge*100,1)}%\n\n"
+        msg_daily += f"📊 Prob: {round(d['prob']*100)}%\n\n"
 
-    msg_daily += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg_daily += "🤖 Joker1X Betting Model\n"
+    log("DAILY MESSAGE GENERATED")
 
     # ======================================================
-    # CONSTRUIRE BILET COTA ~2
+    # OPTIMIZER
+    # ======================================================
+
+    log("RUN OPTIMIZER")
+
+    ticket = optimizer.build_ticket(pool)
+
+    log(f"TICKET RESULT: {ticket}")
+
+    # ======================================================
+    # TICKET MESSAGE
     # ======================================================
 
     msg_ticket = "🎯 BILETUL ZILEI – COTA ~2\n"
     msg_ticket += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    ticket = optimizer.build_ticket(pool)
-
     if ticket:
 
         total_odds = 1
-        ticket_prob = 1
 
         for bet in ticket:
             total_odds *= bet["odds"]
-            ticket_prob *= bet["prob"]
 
-        msg_ticket += f"💰 Cotă totală: {round(total_odds,2)}\n"
-        msg_ticket += f"📊 Probabilitate model: {round(ticket_prob*100)}%\n"
-        msg_ticket += f"🎟️ Selecții: {len(ticket)}\n\n"
+        msg_ticket += f"💰 Cotă totală: {round(total_odds,2)}\n\n"
 
         for bet in ticket:
 
-            implied = 1 / bet["odds"]
-            edge = bet["prob"] - implied
-
             msg_ticket += f"⚽ {bet['match']}\n"
             msg_ticket += f"➡️ {market_converter.convert(bet['bet'])}\n"
-            msg_ticket += f"💰 Cotă: {round(bet['odds'],2)}\n"
-            msg_ticket += f"📊 Prob: {round(bet['prob']*100)}%\n"
-            msg_ticket += f"📈 Edge: {round(edge*100,1)}%\n\n"
+            msg_ticket += f"💰 Cotă: {round(bet['odds'],2)}\n\n"
 
     else:
 
-        msg_ticket += "⚠️ Nu există combinație stabilă pentru acest interval.\n\n"
+        msg_ticket += "⚠️ Nu s-a găsit bilet stabil.\n"
 
-    msg_ticket += "\n━━━━━━━━━━━━━━━━━━━━\n"
-    msg_ticket += "🤖 Joker1X Betting Model\n"
-    msg_ticket += f"🧠 Monte Carlo: {config.SIMULATIONS}\n"
-    msg_ticket += "🍀 Mult succes!\n"
+    log("TICKET MESSAGE GENERATED")
 
     # ======================================================
-    # TRIMITERE TELEGRAM
+    # TELEGRAM SEND
     # ======================================================
+
+    log("SEND TELEGRAM DAILY")
 
     telegram_bot.send_message(msg_daily)
+
+    log("SEND TELEGRAM TICKET")
+
     telegram_bot.send_message(msg_ticket)
 
-    print("Mesaje trimise către Telegram.")
+    log("MESSAGES SENT SUCCESSFULLY")
 
 
 if __name__ == "__main__":
 
     try:
+
         main()
 
     except Exception as e:
 
-        import traceback
+        print("\n===== JOKER1X CRASH =====\n")
 
-        print("===== JOKER1X ERROR =====")
-        print(str(e))
+        print("ERROR:", str(e))
+
         traceback.print_exc()
-        print("==========================")
+
+        print("\n=========================\n")
+
+        sys.exit(0)
