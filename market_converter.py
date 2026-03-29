@@ -19,7 +19,10 @@ def convert(bet):
         "under45":"Sub 4.5 goluri",
 
         "goals_1_4":"1-4 goluri",
-        "goals_2_6":"2-6 goluri"
+        "goals_2_6":"2-6 goluri",
+
+        "over15":"Peste 1.5 goluri",
+        "under45":"Sub 4.5 goluri"
 
     }
 
