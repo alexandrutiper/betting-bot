@@ -1,12 +1,37 @@
 """
-OPTIMIZER BILET COTA 2
+TICKET BUILDER - BILET COTA ~2 (FINAL VERSION)
 
-Algoritmul:
+───────────────────────────────────────────────────────
+🎯 SCOP
+───────────────────────────────────────────────────────
 
-1. generează combinații de selecții
-2. filtrează biletele după cotă
-3. rulează simulări Monte Carlo
-4. alege biletul cu probabilitatea maximă
+Construiește automat un bilet combinat stabil:
+
+✔ cotă target: ~2 (configurabil)
+✔ probabilitate maximă (optimizare)
+✔ selecții sigure (low volatility)
+
+───────────────────────────────────────────────────────
+🧠 LOGICĂ GENERALĂ
+───────────────────────────────────────────────────────
+
+1. filtrăm selecțiile candidate (pool)
+2. generăm combinații (combinatorică controlată)
+3. filtrăm după cotă totală
+4. rulăm Monte Carlo
+5. alegem combinația cu probabilitate maximă
+
+───────────────────────────────────────────────────────
+⚠️ BUG FIX CRITIC
+───────────────────────────────────────────────────────
+
+Anterior:
+❌ returna "bets"
+
+Acum:
+✔ returnează "selections"
+
+→ standard unificat cu main.py
 """
 
 import random
@@ -15,26 +40,46 @@ import config
 from itertools import combinations
 
 
-# ==========================================================
-# CONSTRUIRE BILET
-# ==========================================================
+# ======================================================
+# FILTRARE MARKETURI PERMISE
+# ======================================================
 
-def build_ticket(bets):
+def allowed_market(bet):
+    """
+    Permitem DOAR piețe stabile.
 
-    odds = math.prod(b["odds"] for b in bets)
+    MOTIV:
+    - vrem volatilitate mică
+    - evităm pariuri riscante
 
-    return {
+    PERMISE:
+    ✔ 1X
+    ✔ X2
+    ✔ over15
 
-        "bets": bets,
-        "odds": round(odds,2)
-    }
+    ELIMINATE:
+    ❌ under45 (deja prea multe în daily)
+    ❌ DNB (ai decis să-l scoți)
+    """
+
+    return bet in {"1X", "X2", "over15"}
 
 
-# ==========================================================
-# MONTE CARLO
-# ==========================================================
+# ======================================================
+# SIMULARE MONTE CARLO
+# ======================================================
 
-def simulate_ticket(ticket):
+def simulate_ticket(selections):
+    """
+    Simulează probabilitatea biletului.
+
+    LOGICĂ:
+    - fiecare selecție are probabilitate "prob"
+    - biletul câștigă doar dacă toate câștigă
+
+    SIMULĂRI:
+    - config.SIMULATIONS (ex: 50k)
+    """
 
     wins = 0
 
@@ -42,8 +87,9 @@ def simulate_ticket(ticket):
 
         success = True
 
-        for bet in ticket["bets"]:
+        for bet in selections:
 
+            # random() → [0,1]
             if random.random() > bet["prob"]:
                 success = False
                 break
@@ -51,91 +97,98 @@ def simulate_ticket(ticket):
         if success:
             wins += 1
 
-    return wins/config.SIMULATIONS
+    return wins / config.SIMULATIONS
 
 
-# ==========================================================
-# FILTRARE PIEȚE
-# ==========================================================
+# ======================================================
+# BUILD TICKET (FUNCȚIA PRINCIPALĂ)
+# ======================================================
 
-def allowed_market(bet):
-
+def build_ticket(pool):
     """
-    Permitem doar piețele stabile.
-    """
+    Construiește biletul optim.
 
-    allowed = {
+    INPUT:
+    - pool = lista de daily picks
 
-        "1X",
-        "X2",
-        "home_dnb",
-        "over15"
+    OUTPUT:
+    - dict ticket SAU None
+
+    STRUCTURĂ OUTPUT:
+    {
+        "odds": float,
+        "prob": float,
+        "selections": [...]
     }
+    """
 
-    return bet in allowed
-
-
-# ==========================================================
-# OPTIMIZER
-# ==========================================================
-
-def build_ticket_from_pool(pool):
-
-    best_ticket = None
-    best_prob = 0
-
-    # filtrăm selecțiile candidate
+    # ==================================================
+    # 1. FILTRARE POOL
+    # ==================================================
 
     pool = [
-
         p for p in pool
         if p["odds"] <= config.MAX_SELECTION_ODDS
         and allowed_market(p["bet"])
     ]
 
+    # dacă nu avem suficiente selecții → stop
+    if len(pool) < config.MIN_MATCHES_PER_TICKET:
+        return None
+
+    best_ticket = None
+    best_prob = 0
+
+    # ==================================================
+    # 2. GENERARE COMBINAȚII
+    # ==================================================
+
     for size in range(
         config.MIN_MATCHES_PER_TICKET,
-        config.MAX_MATCHES_PER_TICKET+1
+        config.MAX_MATCHES_PER_TICKET + 1
     ):
 
-        combos = combinations(pool,size)
+        for combo in combinations(pool, size):
 
-        for combo in combos:
-
+            # evităm duplicate (același meci)
             matches = {c["match"] for c in combo}
-
             if len(matches) != len(combo):
                 continue
 
-            ticket = build_ticket(combo)
+            # ==================================================
+            # 3. CALCUL COTĂ
+            # ==================================================
+
+            odds = math.prod(c["odds"] for c in combo)
 
             if not (
-                config.MIN_TOTAL_ODDS
-                <= ticket["odds"]
-                <= config.MAX_TOTAL_ODDS
+                config.MIN_TOTAL_ODDS <= odds <= config.MAX_TOTAL_ODDS
             ):
                 continue
 
-            prob = simulate_ticket(ticket)
+            # ==================================================
+            # 4. MONTE CARLO
+            # ==================================================
+
+            prob = simulate_ticket(combo)
+
+            # ==================================================
+            # 5. BEST SELECTION
+            # ==================================================
 
             if prob > best_prob:
-
                 best_prob = prob
-                best_ticket = ticket
+                best_ticket = combo
 
     if not best_ticket:
-        return None, None
+        return None
 
-    summary = f"""
-🧠 OPTIMIZER MATEMATIC
+    # ==================================================
+    # 6. OUTPUT FINAL (STANDARDIZAT)
+    # ==================================================
 
-Simulări Monte Carlo: {config.SIMULATIONS}
-
-Probabilitate câștig bilet:
-{round(best_prob*100,2)}%
-
-Cotă bilet:
-{best_ticket['odds']}
-"""
-
-    return best_ticket,summary
+    return {
+        "odds": round(math.prod(c["odds"] for c in best_ticket), 2),
+        "prob": best_prob,
+        "selections": list(best_ticket)
+    }
